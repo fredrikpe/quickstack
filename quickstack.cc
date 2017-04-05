@@ -13,6 +13,9 @@
 #elif defined(__x86_64__)
 #define STACK_IP rip
 #define STACK_SP rsp
+#elif defined(__arm__)
+#define STACK_IP 15
+#define STACK_IP 13
 #else
 #error "unsupported cpu arch"
 #endif
@@ -199,9 +202,18 @@ static bool match_debug_file(const string& name, const char* file) {
 }
 
 static int get_user_regs(int pid, user_regs_struct& regs) {
+#if defined(__arm__)
+  struct iovec iov;
+  iov.iov_base = (void*) &regs;
+  iov.iov_len = sizeof(regs);
+#endif
   int count = 100;
   while (1) {
+#if defined(__arm__)
+    int e = ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &iov);
+#else
     int e = ptrace(PTRACE_GETREGS, pid, 0, &regs);
+#endif
     if (e != 0) {
       if (errno == ESRCH && count-- > 0) {
         sched_yield();
@@ -405,7 +417,7 @@ static bool check_shlib(const std::string& fn) {
     return false;
   }
   ulong vaddr = 0;
-#if defined(__i386__)
+#if defined(__i386__) || defined(__arm__)
   Elf32_Ehdr* const ehdr = elf32_getehdr(elf);
   Elf32_Phdr* const phdr = elf32_getphdr(elf);
 #else
@@ -414,7 +426,7 @@ static bool check_shlib(const std::string& fn) {
 #endif
   const int num_phdr = ehdr->e_phnum;
   for (int i = 0; i < num_phdr; ++i) {
-#if defined(__i386__)
+#if defined(__i386__) || defined(__arm__)
     Elf32_Phdr* const p = phdr + i;
 #else
     Elf64_Phdr* const p = phdr + i;
@@ -663,8 +675,13 @@ static int get_stack_trace(int pid,
   uint n_scanned_from_last_frame = 0;
   bool sp_jumped = false;
 
+#if defined(__arm__)
+  ulong sp = regs.uregs[STACK_SP];
+  ulong top_addr = regs.uregs[STACK_IP];
+#else
   ulong sp = regs.STACK_SP;
   ulong top_addr = regs.STACK_IP;
+#endif
   ulong top_sp = sp;
   // needs special care for second addr
   ulong second_addr = 0;
@@ -1393,7 +1410,11 @@ int main(int argc, char** argv) {
   get_options(argc, argv);
   get_tids(target_pid, threads);
   _attach_started = (int*)mmap(
+#if defined(__arm__)
+      0, getpagesize(), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+#else
       0, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+#endif
 
   pid_t quickstack_core_pid = fork();
   if (quickstack_core_pid < 0) {

@@ -16,7 +16,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#ifndef __arm__
 #include <sys/reg.h>
+#else
+#define user_regs_struct user_regs
+#endif
 #include <sys/time.h>
 #include <unistd.h>
 #include <limits.h>
