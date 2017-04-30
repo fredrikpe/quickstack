@@ -15,7 +15,7 @@
 #define STACK_SP rsp
 #elif defined(__arm__)
 #define STACK_IP 15
-#define STACK_IP 13
+#define STACK_SP 13
 #else
 #error "unsupported cpu arch"
 #endif
